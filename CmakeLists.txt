@@ -1,0 +1,23 @@
+cmake_minimum_required(VERSION 3.15)
+project(CascLibTestProject)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Add subdirectory for CascLib
+add_subdirectory(external/CascLib)
+
+# Include CascLib headers
+include_directories(external/CascLib/src)
+
+# Add executable for the test project
+add_executable(CascLibTest main.cpp)
+
+# Link CascLib statically
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CASCLIB_PATH "${CMAKE_BINARY_DIR}/external/CascLib/Debug/casc.lib")
+else()
+    set(CASCLIB_PATH "${CMAKE_BINARY_DIR}/external/CascLib/Release/casc.lib")
+endif()
+
+target_link_libraries(CascLibTest PRIVATE ${CASCLIB_PATH})
