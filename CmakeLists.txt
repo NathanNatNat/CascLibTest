@@ -8,11 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CASC_BUILD_STATIC_LIB ON CACHE BOOL "Force Static library building to link test app")
 set(CASC_BUILD_SHARED_LIB OFF CACHE BOOL "Compile dynamically linked library")
 add_subdirectory(external/CascLib)
+# Include CascLib headers
+include_directories(external/CascLib/src)
 
 # Add executable for the test project
 add_executable(CascLibTest main.cpp)
-
-# Include CascLib headers
-include_directories(external/CascLib/src)
 
 target_link_libraries(CascLibTest casc_static)

@@ -6,7 +6,7 @@ int main() {
     HANDLE hFile;
     DWORD dwBytesRead;
     char buffer[1024];
-    const char* storagePath = "path_to_your_wow_data_folder"; // Change this to the actual path
+    const char *storagePath = "D:/Games/BattleNet/World of Warcraft/data";
 
     // Open the storage
     if (!CascOpenStorage(storagePath, CASC_LOCALE_ENUS, &hStorage)) {
