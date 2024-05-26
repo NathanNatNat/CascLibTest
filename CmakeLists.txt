@@ -1,23 +1,18 @@
 cmake_minimum_required(VERSION 3.15)
-project(CascLibTestProject)
+project(CascLibTest)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Add subdirectory for CascLib
+# CascLib
+set(CASC_BUILD_STATIC_LIB ON CACHE BOOL "Force Static library building to link test app")
+set(CASC_BUILD_SHARED_LIB OFF CACHE BOOL "Compile dynamically linked library")
 add_subdirectory(external/CascLib)
-
-# Include CascLib headers
-include_directories(external/CascLib/src)
 
 # Add executable for the test project
 add_executable(CascLibTest main.cpp)
 
-# Link CascLib statically
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CASCLIB_PATH "${CMAKE_BINARY_DIR}/external/CascLib/Debug/casc.lib")
-else()
-    set(CASCLIB_PATH "${CMAKE_BINARY_DIR}/external/CascLib/Release/casc.lib")
-endif()
+# Include CascLib headers
+include_directories(external/CascLib/src)
 
-target_link_libraries(CascLibTest PRIVATE ${CASCLIB_PATH})
+target_link_libraries(CascLibTest casc_static)
