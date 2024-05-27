@@ -2,6 +2,7 @@
 #include <CascLib.h>
 
 static int ExtractFile(char *szStorageName, char *szStorageFile, char *szFileName);
+//ExtractFile(storagePath, "Interface/FrameXML/Localization.lua", "Localization.lua");
 
 int main()
 {
@@ -9,18 +10,31 @@ int main()
     HANDLE hFile;
     DWORD dwBytesRead;
     char buffer[1024];
-    char *storagePath = "D:/Games/BattleNet/World of Warcraft*wow";
+    const char *storagePath = "D:/Games/BattleNet/World of Warcraft*wow";
+    const char *keyFilePath = "C:/Development/Repositories/CascLibTest/EncryptionKeys.txt";
 
-    ExtractFile(storagePath, "Interface/FrameXML/Localization.lua", "Localization.lua");
-
-    //bool   WINAPI CascImportKeysFromFile(HANDLE hStorage, LPCTSTR szFileName);
-    /*
-    // Open the storage
-    if (!CascOpenStorage(storagePath, CASC_LOCALE_ENUS, &hStorage))
+    // Open the CASC storage
+    if (!CascOpenStorage(storagePath, 0, &hStorage))
     {
-        std::cerr << "Failed to open storage" << std::endl;
+        std::cerr << "Failed to open storage: " << GetLastError() << std::endl;
         return 1;
     }
+
+    long dwFileCount = 0;
+    if (CascGetStorageInfo(hStorage, CascStorageTotalFileCount, &dwFileCount, sizeof(DWORD), NULL))
+    {
+        printf("file count: %d\n", dwFileCount);
+    }
+
+    // Import keys from file
+    if (!CascImportKeysFromFile(hStorage, keyFilePath))
+    {
+        std::cerr << "Failed to import keys from file: " << GetLastError() << std::endl;
+        CascCloseStorage(hStorage);
+        return 1;
+    }
+
+    std::cout << "Keys imported successfully!" << std::endl;
 
     // Open a file from the storage
     if (!CascOpenFile(hStorage, "Interface/FrameXML/Localization.lua", 0, 0, &hFile))
@@ -28,12 +42,6 @@ int main()
         std::cerr << "Failed to open file, casc error:" << GetLastError() << std::endl;
         CascCloseStorage(hStorage);
         return 1;
-    }
-
-    DWORD dwFileCount = 0;
-    if (CascGetStorageInfo(hStorage, CascStorageTotalFileCount, &dwFileCount, sizeof(DWORD), NULL))
-    {
-        printf("file count: %d\n", dwFileCount);
     }
 
     // Read from the file
@@ -49,7 +57,7 @@ int main()
 
     // Clean up
     CascCloseFile(hFile);
-    CascCloseStorage(hStorage);*/
+    CascCloseStorage(hStorage);
 
     return 0;
 }
@@ -62,7 +70,6 @@ int main()
 //   char * szStorageName - Name of the storage local path (optionally with product code name)
 //   char * szStorageFile - Name/number of storaged file.
 //   char * szFileName    - Name of the target disk file.
-
 static int ExtractFile(char *szStorageName, char *szStorageFile, char *szFileName)
 {
     HANDLE hStorage = NULL;        // Open storage handle
