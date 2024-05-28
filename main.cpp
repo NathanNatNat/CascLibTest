@@ -1,4 +1,5 @@
 #include <iostream>
+#include <GLFW/glfw3.h>
 #include <CascLib.h>
 
 static int ExtractFile(char *szStorageName, char *szStorageFile, char *szFileName);

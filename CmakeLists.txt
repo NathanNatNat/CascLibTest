@@ -4,14 +4,20 @@ project(CascLibTest)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# GLFW
+set(GLFW_BUILD_EXAMPLES OFF CACHE INTERNAL "Build the GLFW example programs")
+set(GLFW_BUILD_TESTS OFF CACHE INTERNAL "Build the GLFW test programs")
+set(GLFW_BUILD_DOCS OFF CACHE INTERNAL "Build the GLFW documentation")
+set(GLFW_INSTALL OFF CACHE INTERNAL "Generate installation target")
+add_subdirectory(external/glfw)
+
 # CascLib
 set(CASC_BUILD_STATIC_LIB ON CACHE BOOL "Force Static library building")
 set(CASC_BUILD_SHARED_LIB OFF CACHE BOOL "Compile dynamically linked library")
 add_subdirectory(external/CascLib)
-# Include CascLib headers
 include_directories(external/CascLib/src)
 
 # Add executable for the test project
 add_executable(CascLibTest main.cpp)
 
-target_link_libraries(CascLibTest casc_static)
+target_link_libraries(CascLibTest casc_static glfw)
