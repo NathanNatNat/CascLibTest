@@ -4,6 +4,10 @@ project(CascLibTest)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# GLAD
+add_subdirectory(external/glad/cmake)
+glad_add_library(glad STATIC API gl:core=4.6)
+
 # GLFW
 set(GLFW_BUILD_EXAMPLES OFF CACHE INTERNAL "Build the GLFW example programs")
 set(GLFW_BUILD_TESTS OFF CACHE INTERNAL "Build the GLFW test programs")
@@ -20,4 +24,4 @@ include_directories(external/CascLib/src)
 # Add executable for the test project
 add_executable(CascLibTest main.cpp)
 
-target_link_libraries(CascLibTest casc_static glfw)
+target_link_libraries(CascLibTest casc_static glfw glad)
