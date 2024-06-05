@@ -41,4 +41,4 @@ target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_BACKEND_DIR})
 # Add executable for the test project
 add_executable(CascLibTest main.cpp)
 
-target_link_libraries(CascLibTest casc_static glfw glad imgui)
+target_link_libraries(CascLibTest casc_static glfw glad imgui wsock32 ws2_32)
