@@ -34,8 +34,7 @@ int main()
     GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "CascLibTest", NULL, NULL);
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable vsync
-    if (window == NULL)
-    {
+    if (window == NULL) {
         std::cout << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
         return -1;
