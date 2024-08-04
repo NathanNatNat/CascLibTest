@@ -184,6 +184,7 @@ int main()
     const char* storagePath = "D:/Games/BattleNet/World of Warcraft*wow";
     const char* keyFilePath = "C:/Development/Repositories/CascLibTest/EncryptionKeys.txt";
 
+
     // Open the CASC storage
     if (!CascOpenStorage(storagePath, 0, &hStorage))
     {
