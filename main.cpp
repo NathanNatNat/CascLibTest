@@ -283,18 +283,27 @@ static int ExtractFile(char* szStorageName, char* szStorageFile, char* szFileNam
     // Read the data from the file
     if (dwErrCode == ERROR_SUCCESS)
     {
-        char szBuffer[0x10000];
-        DWORD dwBytes = 1;
-
-        while (dwBytes != 0)
+        // Allocate buffer on the heap instead of the stack to avoid C6262
+        char* szBuffer = (char*)malloc(0x10000);
+        if (szBuffer == NULL)
         {
-            CascReadFile(hFile, szBuffer, sizeof(szBuffer), &dwBytes);
-            if (dwBytes == 0)
-                break;
+            dwErrCode = ERROR_OUTOFMEMORY;
+        }
+        else
+        {
+            DWORD dwBytes = 1;
 
-            WriteFile(handle, szBuffer, dwBytes, &dwBytes, NULL);
-            if (dwBytes == 0)
-                break;
+            while (dwBytes != 0)
+            {
+                CascReadFile(hFile, szBuffer, 0x10000, &dwBytes);
+                if (dwBytes == 0)
+                    break;
+
+                WriteFile(handle, szBuffer, dwBytes, &dwBytes, NULL);
+                if (dwBytes == 0)
+                    break;
+            }
+            free(szBuffer);
         }
     }
 
