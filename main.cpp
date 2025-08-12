@@ -209,7 +209,7 @@ int main()
     std::cout << "Keys imported successfully!" << std::endl;
 
     // Open a file from the storage
-    if (!CascOpenFile(hStorage, "Interface/FrameXML/Localization.lua", 0, 0, &hFile))
+    if (!CascOpenFile(hStorage, "interface/addons/blizzard_calendar/localization.lua", 0, 0, &hFile))
     {
         std::cerr << "Failed to open file, casc error:" << GetLastError() << std::endl;
         CascCloseStorage(hStorage);
