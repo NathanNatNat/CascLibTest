@@ -181,8 +181,8 @@ int main()
     HANDLE hFile;
     DWORD dwBytesRead;
     char buffer[1024];
-    const char* storagePath = "D:/Games/BattleNet/World of Warcraft*wow";
-    const char* keyFilePath = "C:/Development/Repositories/CascLibTest/EncryptionKeys.txt";
+    const char* storagePath = "E:/Games/BattleNet/World of Warcraft*wow";
+    const char* keyFilePath = "D:/Repositories/CascLibTest/EncryptionKeys.txt";
 
 
     // Open the CASC storage
