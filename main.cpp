@@ -6,8 +6,8 @@
 // GLFW (include after glad)
 #include <GLFW/glfw3.h>
 #include <CascLib.h>
-
-    // Add this at the top of your file, before any code that uses std::to_string
+#include <cmath>
+#include <cstring> 
 #include <sstream>
 
 // Add this utility function near the top of your file (before usage)
@@ -23,12 +23,19 @@ static int ExtractFile(char* szStorageName, char* szStorageFile, char* szFileNam
 
 // Function prototypes
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
+void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 
 // CASC-related functions
 void OpenCascStorage();
 void ImportCascKeys();
 void ReadCascFile();
 void CloseCascStorage();
+
+// 3D Viewport functions
+void InitViewport();
+void UpdateViewport(int width, int height);
+void RenderViewport();
+void CleanupViewport();
 
 // Window dimensions
 const GLuint WIDTH = 2560, HEIGHT = 1440;
@@ -40,6 +47,152 @@ bool g_keysImported = false;
 std::string g_statusMessage = "Ready";
 std::string g_fileContent = "";
 
+// 3D Viewport variables
+struct ViewportData {
+    GLuint framebuffer = 0;
+    GLuint colorTexture = 0;
+    GLuint depthBuffer = 0;
+    GLuint shaderProgram = 0;
+    GLuint VAO = 0;
+    GLuint VBO = 0;
+    int width = 512;
+    int height = 512;
+    float rotation = 0.0f;
+} g_viewport;
+
+// Simple vertex shader source
+const char* vertexShaderSource = R"(
+#version 460 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aColor;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+
+out vec3 vertexColor;
+
+void main()
+{
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+    vertexColor = aColor;
+}
+)";
+
+// Simple fragment shader source
+const char* fragmentShaderSource = R"(
+#version 460 core
+in vec3 vertexColor;
+out vec4 FragColor;
+
+void main()
+{
+    FragColor = vec4(vertexColor, 1.0);
+}
+)";
+
+// Cube vertices with colors
+float cubeVertices[] = {
+    // positions          // colors
+    -0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
+     0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 0.0f,
+     0.5f,  0.5f, -0.5f,  0.0f, 0.0f, 1.0f,
+     0.5f,  0.5f, -0.5f,  0.0f, 0.0f, 1.0f,
+    -0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
+
+    -0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 1.0f,
+     0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,
+    -0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
+    -0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 1.0f,
+
+    -0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
+    -0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 1.0f,
+    -0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
+
+     0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,
+     0.5f,  0.5f, -0.5f,  0.0f, 0.0f, 1.0f,
+     0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 0.0f,
+     0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 0.0f,
+     0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,
+
+    -0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
+     0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 0.0f,
+     0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,
+     0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,
+    -0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
+
+    -0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f,
+     0.5f,  0.5f, -0.5f,  0.0f, 0.0f, 1.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,
+    -0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
+    -0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f
+};
+
+// Simple triangle vertices in clip space coordinates
+float triangleVertices[] = {
+    // positions (clip space)  // colors
+    -0.5f, -0.5f, 0.0f,        1.0f, 0.0f, 0.0f,  // bottom left - red
+     0.5f, -0.5f, 0.0f,        0.0f, 1.0f, 0.0f,  // bottom right - green  
+     0.0f,  0.5f, 0.0f,        0.0f, 0.0f, 1.0f   // top - blue
+};
+
+// Simple matrix multiplication functions
+void multiplyMatrix4x4(float* result, const float* a, const float* b) {
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            result[i * 4 + j] = 0;
+            for (int k = 0; k < 4; k++) {
+                result[i * 4 + j] += a[i * 4 + k] * b[k * 4 + j];
+            }
+        }
+    }
+}
+
+void createPerspectiveMatrix(float* matrix, float fov, float aspect, float nearPlane, float farPlane) {
+    memset(matrix, 0, 16 * sizeof(float));
+    float tanHalfFov = tan(fov / 2.0f);
+    matrix[0] = 1.0f / (aspect * tanHalfFov);
+    matrix[5] = 1.0f / tanHalfFov;
+    matrix[10] = -(farPlane + nearPlane) / (farPlane - nearPlane);
+    matrix[11] = -1.0f;
+    matrix[14] = -(2.0f * farPlane * nearPlane) / (farPlane - nearPlane);
+}
+
+void createViewMatrix(float* matrix, float eyeX, float eyeY, float eyeZ) {
+    memset(matrix, 0, 16 * sizeof(float));
+    matrix[0] = matrix[5] = matrix[10] = matrix[15] = 1.0f;
+    matrix[12] = -eyeX;
+    matrix[13] = -eyeY;
+    matrix[14] = -eyeZ;
+}
+
+void createRotationMatrix(float* matrix, float angle, float x, float y, float z) {
+    memset(matrix, 0, 16 * sizeof(float));
+    float c = cos(angle);
+    float s = sin(angle);
+    float oneMinusC = 1.0f - c;
+    
+    matrix[0] = c + x * x * oneMinusC;
+    matrix[1] = x * y * oneMinusC - z * s;
+    matrix[2] = x * z * oneMinusC + y * s;
+    matrix[4] = y * x * oneMinusC + z * s;
+    matrix[5] = c + y * y * oneMinusC;
+    matrix[6] = y * z * oneMinusC - x * s;
+    matrix[8] = z * x * oneMinusC - y * s;
+    matrix[9] = z * y * oneMinusC + x * s;
+    matrix[10] = c + z * z * oneMinusC;
+    matrix[15] = 1.0f;
+}
+
 // The MAIN function, from here we start the application and run the game loop
 int main()
 {
@@ -47,11 +200,11 @@ int main()
     // Init GLFW
     glfwInit();
     // Set all the required options for GLFW
-    const char* glsl_version = "#version 140";
+    const char* glsl_version = "#version 460 core";  // Changed from "#version 140"
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
 
     // Create a GLFWwindow object that we can use for GLFW's functions
     GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "CascLibTest", NULL, NULL);
@@ -66,6 +219,7 @@ int main()
 
     // Set the required callback functions
     glfwSetKeyCallback(window, key_callback);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
     // Load OpenGL functions, gladLoadGL returns the loaded version, 0 on error.
     int version = gladLoadGL(glfwGetProcAddress);
@@ -80,6 +234,9 @@ int main()
 
     // Define the viewport dimensions
     glViewport(0, 0, WIDTH, HEIGHT);
+
+    // Initialize 3D viewport
+    InitViewport();
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -121,6 +278,7 @@ int main()
     bool show_demo_window = true;
     bool show_another_window = false;
     bool show_casc_window = true;
+    bool show_viewport_window = true;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
     // Game loop
@@ -183,6 +341,7 @@ int main()
                 ImGui::MenuItem("Demo Window", NULL, &show_demo_window);
                 ImGui::MenuItem("Another Window", NULL, &show_another_window);
                 ImGui::MenuItem("CASC Window", NULL, &show_casc_window);
+                ImGui::MenuItem("3D Viewport", NULL, &show_viewport_window);
                 ImGui::EndMenu();
             }
             ImGui::EndMenuBar();
@@ -205,6 +364,7 @@ int main()
             ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
             ImGui::Checkbox("Another Window", &show_another_window);
             ImGui::Checkbox("CASC Window", &show_casc_window);
+            ImGui::Checkbox("3D Viewport", &show_viewport_window);
 
             ImGui::SliderFloat("float", &f, 0.0f, 1.0f); // Edit 1 float using a slider from 0.0f to 1.0f
             ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
@@ -280,6 +440,35 @@ int main()
             ImGui::End();
         }
 
+        // 5. Show 3D Viewport window
+        if (show_viewport_window)
+        {
+            ImGui::Begin("3D Viewport", &show_viewport_window);
+            
+            // Get available content region
+            ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
+            
+            // Update viewport size if needed
+            if (viewportPanelSize.x > 0 && viewportPanelSize.y > 0 && 
+                (g_viewport.width != (int)viewportPanelSize.x || g_viewport.height != (int)viewportPanelSize.y))
+            {
+                UpdateViewport((int)viewportPanelSize.x, (int)viewportPanelSize.y);
+            }
+            
+            // Render 3D scene to framebuffer
+            RenderViewport();
+            
+            // Display the rendered texture
+            if (g_viewport.colorTexture)
+            {
+                ImGui::Image((ImTextureID)(intptr_t)g_viewport.colorTexture, 
+                           ImVec2((float)g_viewport.width, (float)g_viewport.height),
+                           ImVec2(0, 1), ImVec2(1, 0)); // Flip Y coordinate
+            }
+            
+            ImGui::End();
+        }
+
         // Rendering
         ImGui::Render();
         int display_w, display_h;
@@ -310,6 +499,9 @@ int main()
         CloseCascStorage();
     }
 
+    // Cleanup 3D viewport
+    CleanupViewport();
+
     // Cleanup
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -318,6 +510,227 @@ int main()
     glfwTerminate();
 
     return 0;
+}
+
+// 3D Viewport implementation
+void InitViewport()
+{
+    std::cout << "Initializing viewport..." << std::endl;
+    
+    // Compile vertex shader
+    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+    glCompileShader(vertexShader);
+    
+    // Check vertex shader compilation
+    GLint success;
+    GLchar infoLog[512];
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+    if (!success)
+    {
+        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
+        std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
+        return;
+    }
+    else {
+        std::cout << "Vertex shader compiled successfully" << std::endl;
+    }
+    
+    // Compile fragment shader
+    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+    glCompileShader(fragmentShader);
+    
+    // Check fragment shader compilation
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
+    if (!success)
+    {
+        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+        std::cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << std::endl;
+        return;
+    }
+    else {
+        std::cout << "Fragment shader compiled successfully" << std::endl;
+    }
+    
+    // Link shaders
+    g_viewport.shaderProgram = glCreateProgram();
+    glAttachShader(g_viewport.shaderProgram, vertexShader);
+    glAttachShader(g_viewport.shaderProgram, fragmentShader);
+    glLinkProgram(g_viewport.shaderProgram);
+    
+    // Check shader program linking
+    glGetProgramiv(g_viewport.shaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(g_viewport.shaderProgram, 512, NULL, infoLog);
+        std::cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
+        return;
+    }
+    else {
+        std::cout << "Shader program linked successfully" << std::endl;
+    }
+    
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+    
+    // Set up vertex data and buffers
+    glGenVertexArrays(1, &g_viewport.VAO);
+    glGenBuffers(1, &g_viewport.VBO);
+    
+    std::cout << "Generated VAO: " << g_viewport.VAO << ", VBO: " << g_viewport.VBO << std::endl;
+    
+    glBindVertexArray(g_viewport.VAO);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, g_viewport.VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), cubeVertices, GL_STATIC_DRAW);
+    
+    // Position attribute
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    
+    // Color attribute
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    
+    // Check for OpenGL errors
+    GLenum error = glGetError();
+    if (error != GL_NO_ERROR) {
+        std::cout << "OpenGL error during VAO setup: " << error << std::endl;
+    }
+    
+    // Create framebuffer
+    UpdateViewport(g_viewport.width, g_viewport.height);
+    
+    std::cout << "Viewport initialization complete" << std::endl;
+}
+
+void UpdateViewport(int width, int height)
+{
+    if (width <= 0 || height <= 0) return;
+    
+    g_viewport.width = width;
+    g_viewport.height = height;
+    
+    // Delete existing framebuffer objects if they exist
+    if (g_viewport.framebuffer != 0)
+    {
+        glDeleteFramebuffers(1, &g_viewport.framebuffer);
+        glDeleteTextures(1, &g_viewport.colorTexture);
+        glDeleteRenderbuffers(1, &g_viewport.depthBuffer);
+    }
+    
+    // Create framebuffer
+    glGenFramebuffers(1, &g_viewport.framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_viewport.framebuffer);
+    
+    // Create color texture
+    glGenTextures(1, &g_viewport.colorTexture);
+    glBindTexture(GL_TEXTURE_2D, g_viewport.colorTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_viewport.colorTexture, 0);
+    
+    // Create depth buffer
+    glGenRenderbuffers(1, &g_viewport.depthBuffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, g_viewport.depthBuffer);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, g_viewport.depthBuffer);
+    
+    // Check if framebuffer is complete
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void RenderViewport()
+{
+    // Update rotation
+    g_viewport.rotation += 0.01f;
+
+    // Validate required OpenGL objects first
+    if (g_viewport.shaderProgram == 0 || g_viewport.VAO == 0 || g_viewport.framebuffer == 0) {
+        std::cout << "Invalid OpenGL objects - shader: " << g_viewport.shaderProgram 
+                  << ", VAO: " << g_viewport.VAO << ", framebuffer: " << g_viewport.framebuffer << std::endl;
+        return;
+    }
+
+    // Save current OpenGL states
+    GLint previousFramebuffer, previousViewport[4];
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glGetIntegerv(GL_VIEWPORT, previousViewport);
+
+    // Bind our offscreen framebuffer and set the viewport size
+    glBindFramebuffer(GL_FRAMEBUFFER, g_viewport.framebuffer);
+    glViewport(0, 0, g_viewport.width, g_viewport.height);
+
+    // Enable depth testing and clear the buffers
+    glEnable(GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // Use our shader program
+    glUseProgram(g_viewport.shaderProgram);
+
+    // Get uniform locations
+    GLint modelLoc = glGetUniformLocation(g_viewport.shaderProgram, "model");
+    GLint viewLoc  = glGetUniformLocation(g_viewport.shaderProgram, "view");
+    GLint projLoc  = glGetUniformLocation(g_viewport.shaderProgram, "projection");
+
+    // Set up our transformation matrices
+    float model[16], view[16], projection[16];
+    // Rotate the cube about the Y-axis
+    createRotationMatrix(model, g_viewport.rotation, 0.0f, 1.0f, 0.0f);
+    // Place the camera at (0,0,3) so that the view matrix translates the scene by (0,0,-3)
+    createViewMatrix(view, 0.0f, 0.0f, 3.0f);
+    float aspect = (float)g_viewport.width / (float)g_viewport.height;
+    createPerspectiveMatrix(projection, 45.0f * 3.14159f / 180.0f, aspect, 0.1f, 100.0f);
+
+    // Pass transformation matrices to the shader
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+    glUniformMatrix4fv(viewLoc,  1, GL_FALSE, view);
+    glUniformMatrix4fv(projLoc,  1, GL_FALSE, projection);
+
+    // Check for any OpenGL errors
+    GLenum error = glGetError();
+    if (error != GL_NO_ERROR) {
+        std::cout << "OpenGL error: " << error << std::endl;
+    }
+
+    // Draw the cube (36 vertices -> 12 triangles)
+    glBindVertexArray(g_viewport.VAO);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+
+    // Check again for errors after drawing
+    error = glGetError();
+    if (error != GL_NO_ERROR) {
+        std::cout << "OpenGL error after drawing: " << error << std::endl;
+    }
+
+    // Restore previous OpenGL state
+    glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
+    glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+}
+
+void CleanupViewport()
+{
+    if (g_viewport.framebuffer != 0)
+    {
+        glDeleteFramebuffers(1, &g_viewport.framebuffer);
+        glDeleteTextures(1, &g_viewport.colorTexture);
+        glDeleteRenderbuffers(1, &g_viewport.depthBuffer);
+    }
+    
+    if (g_viewport.VAO != 0)
+    {
+        glDeleteVertexArrays(1, &g_viewport.VAO);
+        glDeleteBuffers(1, &g_viewport.VBO);
+    }
+    
+    if (g_viewport.shaderProgram != 0)
+    {
+        glDeleteProgram(g_viewport.shaderProgram);
+    }
 }
 
 // CASC operation functions
@@ -431,6 +844,35 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
         glfwSetWindowShouldClose(window, GL_TRUE);
+}
+
+// Add this function somewhere near your other callback functions:
+void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+{
+    // Update the main viewport:
+    glViewport(0, 0, width, height);
+    
+    // Optionally update the offscreen viewport dimensions as well:
+    UpdateViewport(width, height);
+}
+
+void window_iconify_callback(GLFWwindow* window, int iconified)
+{
+    if (iconified)
+        std::cout << "Window minimized" << std::endl;
+    else
+    {
+
+    }
+        std::cout << "Window restored" << std::endl;
+}
+
+void window_maximize_callback(GLFWwindow* window, int maximized)
+{
+    if (maximized)
+        std::cout << "Window maximized" << std::endl;
+    else
+        std::cout << "Window restored from maximized state" << std::endl;
 }
 
 //-----------------------------------------------------------------------------
