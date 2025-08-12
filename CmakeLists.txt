@@ -4,31 +4,6 @@ project(CascLibTest)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Check for Python and Jinja2 dependencies needed by GLAD2
-find_package(Python3 COMPONENTS Interpreter QUIET)
-
-if(Python3_FOUND)
-    message(STATUS "Found Python: ${Python3_EXECUTABLE}")
-    
-    # Check if Jinja2 is available
-    execute_process(
-        COMMAND ${Python3_EXECUTABLE} -c "import jinja2; print('Jinja2 available')"
-        RESULT_VARIABLE JINJA2_CHECK_RESULT
-        OUTPUT_QUIET
-        ERROR_QUIET
-    )
-    
-    if(NOT JINJA2_CHECK_RESULT EQUAL 0)
-        message(WARNING "Jinja2 not found. GLAD2 may require Jinja2 for template processing.")
-        message(WARNING "Install it with: pip install jinja2")
-    else()
-        message(STATUS "Jinja2 is available")
-    endif()
-else()
-    message(WARNING "Python not found. GLAD2 may require Python and Jinja2 for code generation.")
-    message(WARNING "Please install Python 3 and Jinja2 if you encounter build issues.")
-endif()
-
 # GLFW
 set(GLFW_BUILD_EXAMPLES OFF CACHE INTERNAL "Build the GLFW example programs")
 set(GLFW_BUILD_TESTS OFF CACHE INTERNAL "Build the GLFW test programs")
