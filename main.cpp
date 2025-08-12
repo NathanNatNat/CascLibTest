@@ -251,10 +251,10 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 //   char * szFileName    - Name of the target disk file.
 static int ExtractFile(char* szStorageName, char* szStorageFile, char* szFileName)
 {
-    HANDLE hStorage = NULL; // Open storage handle
-    HANDLE hFile = NULL; // Storage file handle
-    HANDLE handle = NULL; // Disk file handle
-    DWORD dwErrCode = ERROR_SUCCESS; // Result value
+    HANDLE hStorage = NULL;
+    HANDLE hFile = NULL; 
+    HANDLE handle = NULL;
+    DWORD dwErrCode = ERROR_SUCCESS;
 
     // Open a CASC storage, e.g. "c:\Games\StarCraft II".
     // For a multi-product storage, a product code can be appended
@@ -283,28 +283,22 @@ static int ExtractFile(char* szStorageName, char* szStorageFile, char* szFileNam
     // Read the data from the file
     if (dwErrCode == ERROR_SUCCESS)
     {
-        // Allocate buffer on the heap instead of the stack to avoid C6262
-        char* szBuffer = (char*)malloc(0x10000);
-        if (szBuffer == NULL)
+        // Modern C++17: Use smart pointer for automatic memory management
+        constexpr size_t BUFFER_SIZE = 0x10000;
+        auto buffer = std::make_unique<char[]>(BUFFER_SIZE);
+        
+        DWORD dwBytes = 1;
+        while (dwBytes != 0)
         {
-            dwErrCode = ERROR_OUTOFMEMORY;
-        }
-        else
-        {
-            DWORD dwBytes = 1;
+            CascReadFile(hFile, buffer.get(), BUFFER_SIZE, &dwBytes);
+            if (dwBytes == 0)
+                break;
 
-            while (dwBytes != 0)
-            {
-                CascReadFile(hFile, szBuffer, 0x10000, &dwBytes);
-                if (dwBytes == 0)
-                    break;
-
-                WriteFile(handle, szBuffer, dwBytes, &dwBytes, NULL);
-                if (dwBytes == 0)
-                    break;
-            }
-            free(szBuffer);
+            WriteFile(handle, buffer.get(), dwBytes, &dwBytes, NULL);
+            if (dwBytes == 0)
+                break;
         }
+        // No manual cleanup needed - unique_ptr handles it automatically
     }
 
     // Cleanup and exit
