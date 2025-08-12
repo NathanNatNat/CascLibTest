@@ -66,4 +66,7 @@ target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_BACKEND_DIR})
 # Add executable for the test project
 add_executable(CascLibTest main.cpp)
 
+# Set as startup project in Visual Studio
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT CascLibTest)
+
 target_link_libraries(CascLibTest casc_static glfw glad imgui wsock32 ws2_32)
