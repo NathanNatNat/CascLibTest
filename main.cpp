@@ -275,7 +275,7 @@ int main()
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // Our state
-    bool show_demo_window = true;
+    bool show_demo_window = false;
     bool show_another_window = false;
     bool show_casc_window = true;
     bool show_viewport_window = true;
@@ -298,7 +298,7 @@ int main()
 
         // Create main dockspace
         ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_None;
-        ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
+        ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar;
         
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->WorkPos);
@@ -306,7 +306,7 @@ int main()
         ImGui::SetNextWindowViewport(viewport->ID);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-        window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+        window_flags |= ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
         window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
         // When using ImGuiDockNodeFlags_PassthruCentralNode, DockSpace() will render our background
@@ -353,6 +353,7 @@ int main()
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
 
+        /*0        
         // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
         {
             static float f = 0.0f;
@@ -377,7 +378,7 @@ int main()
 
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
             ImGui::End();
-        }
+        }*/
 
         // 3. Show another simple window.
         if (show_another_window)

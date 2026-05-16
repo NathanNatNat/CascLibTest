@@ -1,0 +1,15 @@
+{
+  "cmake.configureOnOpen": true,
+  "cmake.configureArgs": [],
+  "cmake.defaultVariants": {
+    "buildType": {
+      "default": "debug",
+      "choices": {
+        "debug": {
+          "short": "Debug",
+          "buildType": "Debug"
+        }
+      }
+    }
+  }
+}
