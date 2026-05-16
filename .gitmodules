@@ -11,3 +11,6 @@
 [submodule "external/glad"]
 	path = external/glad
 	url = https://github.com/Dav1dde/glad
+[submodule "external/spdlog"]
+	path = external/spdlog
+	url = https://github.com/gabime/spdlog.git

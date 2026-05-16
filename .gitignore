@@ -553,3 +553,9 @@ fabric.properties
 
 # Exclude build directory
 build/
+
+# CASC online cache
+cache/
+
+# ImGui layout state
+imgui.ini
