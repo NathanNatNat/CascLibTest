@@ -28,47 +28,125 @@
 // ============================================================================
 
 struct AppConsole {
-    std::string buf;
+    ImVector<char*> Items;
+    char InputBuf[512];
+    bool AutoScroll = true;
+    bool ScrollToBottom = false;
     std::mutex mtx;
-    bool scrollToBottom = false;
+
+    AppConsole() { memset(InputBuf, 0, sizeof(InputBuf)); }
+    ~AppConsole() { ClearLog(); }
+
+    void ClearLog() {
+        std::lock_guard<std::mutex> lock(mtx);
+        for (int i = 0; i < Items.Size; i++)
+            ImGui::MemFree(Items[i]);
+        Items.clear();
+    }
 
     void Append(const std::string& msg) {
         std::lock_guard<std::mutex> lock(mtx);
-        buf += msg;
-        scrollToBottom = true;
+        // msg may contain a trailing newline from spdlog — strip it
+        std::string trimmed = msg;
+        while (!trimmed.empty() && (trimmed.back() == '\n' || trimmed.back() == '\r'))
+            trimmed.pop_back();
+        Items.push_back(ImStrdup(trimmed.c_str()));
+        ScrollToBottom = true;
     }
 
-    void Clear() {
-        std::lock_guard<std::mutex> lock(mtx);
-        buf.clear();
-    }
+    void Clear() { ClearLog(); }
 
     void Draw(const char* title, bool* p_open) {
         ImGui::Begin(title, p_open);
 
-        if (ImGui::SmallButton("Clear")) Clear();
+        if (ImGui::SmallButton("Clear")) ClearLog();
+        ImGui::SameLine();
+        bool copyToClipboard = ImGui::SmallButton("Copy");
+        ImGui::SameLine();
+        ImGui::Checkbox("Auto-scroll", &AutoScroll);
         ImGui::Separator();
 
-        ImVec2 avail = ImGui::GetContentRegionAvail();
+        // Scrolling region — reserve space for input at the bottom
+        ImGuiStyle& style = ImGui::GetStyle();
+        const float footerHeight = style.SeparatorSize + style.ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
+        ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footerHeight), ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_HorizontalScrollbar);
 
-        std::string snapshot;
+        if (ImGui::BeginPopupContextWindow()) {
+            if (ImGui::Selectable("Clear")) ClearLog();
+            if (ImGui::Selectable("Copy All")) {
+                ImGui::LogToClipboard();
+                {
+                    std::lock_guard<std::mutex> lock(mtx);
+                    for (const char* item : Items)
+                        ImGui::LogText("%s\n", item);
+                }
+                ImGui::LogFinish();
+            }
+            ImGui::EndPopup();
+        }
+
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 1));
+        if (copyToClipboard)
+            ImGui::LogToClipboard();
+
         {
             std::lock_guard<std::mutex> lock(mtx);
-            snapshot = buf;
+            for (const char* item : Items) {
+                ImVec4 color;
+                bool hasColor = false;
+                if (strstr(item, "[E]") || strstr(item, "ERROR"))   { color = ImVec4(1.0f, 0.3f, 0.3f, 1.0f); hasColor = true; }
+                else if (strstr(item, "[W]") || strstr(item, "WARN")) { color = ImVec4(1.0f, 0.8f, 0.0f, 1.0f); hasColor = true; }
+                else if (strstr(item, "[OK]"))                        { color = ImVec4(0.3f, 1.0f, 0.3f, 1.0f); hasColor = true; }
+                else if (strstr(item, "[I]"))                         { color = ImVec4(0.7f, 0.7f, 0.9f, 1.0f); hasColor = true; }
+                else if (strstr(item, "==="))                         { color = ImVec4(1.0f, 0.8f, 0.6f, 1.0f); hasColor = true; }
+
+                if (hasColor) ImGui::PushStyleColor(ImGuiCol_Text, color);
+                ImGui::TextUnformatted(item);
+                if (hasColor) ImGui::PopStyleColor();
+            }
         }
 
-        ImGui::InputTextMultiline("##ConsoleText", snapshot.data(), snapshot.size() + 1,
-            avail, ImGuiInputTextFlags_ReadOnly);
+        if (copyToClipboard)
+            ImGui::LogFinish();
 
-        if (scrollToBottom) {
-            ImGuiID id = ImGui::GetItemID();
-            ImGuiInputTextState* state = ImGui::GetInputTextState(id);
-            if (state)
-                state->CursorFollow = true;
-            scrollToBottom = false;
+        if (ScrollToBottom || (AutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()))
+            ImGui::SetScrollHereY(1.0f);
+        ScrollToBottom = false;
+
+        ImGui::PopStyleVar();
+        ImGui::EndChild();
+
+        // Input line
+        ImGui::Separator();
+        bool reclaimFocus = false;
+        if (ImGui::InputText("##Input", InputBuf, sizeof(InputBuf),
+                ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_EscapeClearsAll)) {
+            char* s = InputBuf;
+            // Trim trailing spaces
+            char* end = s + strlen(s);
+            while (end > s && end[-1] == ' ') end--;
+            *end = 0;
+
+            if (s[0])
+                ExecCommand(s);
+            s[0] = '\0';
+            reclaimFocus = true;
         }
+
+        ImGui::SetItemDefaultFocus();
+        if (reclaimFocus)
+            ImGui::SetKeyboardFocusHere(-1);
 
         ImGui::End();
+    }
+
+    void ExecCommand(const char* cmd) {
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            Items.push_back(ImStrdup((std::string("> ") + cmd).c_str()));
+        }
+        ScrollToBottom = true;
+        // Commands could be hooked here in the future
     }
 };
 
@@ -504,32 +582,54 @@ static void CloseStorage() {
     LogInfo("[OK] Storage closed.");
 }
 
+static std::atomic<bool> g_checkRunning{false};
+static std::thread g_checkThread;
+
+static void JoinCheckThread() {
+    if (g_checkThread.joinable())
+        g_checkThread.join();
+}
+
 static void CheckFileExistence() {
     if (!g_storageOpen) { LogWarn(" Open storage first."); return; }
+    if (g_checkRunning) { LogWarn(" Check already in progress..."); return; }
 
-    LogInfo(" Checking %zu files by FileDataID...", g_fileChecks.size());
+    g_checkRunning = true;
+    JoinCheckThread();
 
-    int found = 0;
-    for (auto& fc : g_fileChecks) {
-        HANDLE hFile = nullptr;
-        if (CascOpenFile(g_hStorage, CASC_FILE_DATA_ID(fc.fileDataId), 0, CASC_OPEN_BY_FILEID, &hFile)) {
-            fc.status = 1;
-            found++;
-            ULONGLONG size = 0;
-            CascGetFileSize64(hFile, &size);
-            fc.fileSize = size;
-            LogInfo("  [FOUND]     %7u  %-20s  (%llu bytes)", fc.fileDataId, fc.name, size);
-            CascCloseFile(hFile);
-        } else {
-            DWORD err = GetLastError();
-            fc.status = -1;
-            fc.fileSize = 0;
-            LogInfo("  [NOT FOUND] %7u  %-20s  (error %u)", fc.fileDataId, fc.name, err);
+    g_checkThread = std::thread([]() {
+        LogInfo("Checking %zu files by FileDataID...", g_fileChecks.size());
+
+        int found = 0;
+        for (auto& fc : g_fileChecks) {
+            if (g_isOnline)
+                LogInfo("  Querying CDN for %u (%s)...", fc.fileDataId, fc.name);
+
+            HANDLE hFile = nullptr;
+            DWORD openFlags = CASC_OPEN_BY_FILEID;
+            if (CascOpenFile(g_hStorage, CASC_FILE_DATA_ID(fc.fileDataId), 0, openFlags, &hFile)) {
+                fc.status = 1;
+                found++;
+                ULONGLONG size = 0;
+                CascGetFileSize64(hFile, &size);
+                fc.fileSize = size;
+                if (g_isOnline)
+                    LogInfo("  [FOUND]     %7u  %-20s  (%llu bytes) [downloaded from CDN]", fc.fileDataId, fc.name, size);
+                else
+                    LogInfo("  [FOUND]     %7u  %-20s  (%llu bytes)", fc.fileDataId, fc.name, size);
+                CascCloseFile(hFile);
+            } else {
+                DWORD err = GetLastError();
+                fc.status = -1;
+                fc.fileSize = 0;
+                LogInfo("  [NOT FOUND] %7u  %-20s  (error %u)", fc.fileDataId, fc.name, err);
+            }
         }
-    }
 
-    g_checksRun = true;
-    LogInfo(" Check complete: %d/%zu found.", found, g_fileChecks.size());
+        g_checksRun = true;
+        g_checkRunning = false;
+        LogInfo("Check complete: %d/%zu found.", found, g_fileChecks.size());
+    });
 }
 
 static void RunFileSearch() {
@@ -783,7 +883,11 @@ static void DrawFileTestsPanel() {
     ImGui::Begin("File Tests");
 
     if (ImGui::CollapsingHeader("FileDataID Existence Check", ImGuiTreeNodeFlags_DefaultOpen)) {
-        if (ImGui::Button("Run Check")) CheckFileExistence();
+        if (g_checkRunning) {
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "Checking...");
+        } else {
+            if (ImGui::Button("Run Check")) CheckFileExistence();
+        }
 
         if (g_checksRun && ImGui::BeginTable("FileChecks", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable)) {
             ImGui::TableSetupColumn("FileDataID", ImGuiTableColumnFlags_WidthFixed, 100);
@@ -1029,6 +1133,31 @@ int main() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
+        // Main menu bar
+        static bool showDemoWindow = false;
+        static bool showMetricsWindow = false;
+        static bool showStyleEditor = false;
+        static bool showAboutWindow = false;
+
+        if (ImGui::BeginMainMenuBar()) {
+            if (ImGui::BeginMenu("Windows")) {
+                ImGui::MenuItem("Storage", nullptr, nullptr);
+                ImGui::MenuItem("File Tests", nullptr, nullptr);
+                ImGui::MenuItem("File Search", nullptr, nullptr);
+                ImGui::MenuItem("File Inspector", nullptr, nullptr);
+                ImGui::MenuItem("Console", nullptr, nullptr);
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("ImGui")) {
+                ImGui::MenuItem("Demo Window", nullptr, &showDemoWindow);
+                ImGui::MenuItem("Metrics/Debugger", nullptr, &showMetricsWindow);
+                ImGui::MenuItem("Style Editor", nullptr, &showStyleEditor);
+                ImGui::MenuItem("About Dear ImGui", nullptr, &showAboutWindow);
+                ImGui::EndMenu();
+            }
+            ImGui::EndMainMenuBar();
+        }
+
         ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
 
         if (g_firstFrame) {
@@ -1036,6 +1165,17 @@ int main() {
             g_firstFrame = false;
         }
 
+        // ImGui debug windows
+        if (showDemoWindow)    ImGui::ShowDemoWindow(&showDemoWindow);
+        if (showMetricsWindow) ImGui::ShowMetricsWindow(&showMetricsWindow);
+        if (showAboutWindow)   ImGui::ShowAboutWindow(&showAboutWindow);
+        if (showStyleEditor) {
+            ImGui::Begin("Style Editor", &showStyleEditor);
+            ImGui::ShowStyleEditor();
+            ImGui::End();
+        }
+
+        // App panels
         DrawStoragePanel();
         DrawFileTestsPanel();
         DrawFileSearchPanel();
@@ -1056,6 +1196,7 @@ int main() {
     }
 
     JoinLoadThread();
+    JoinCheckThread();
     if (g_storageOpen) CascCloseStorage(g_hStorage);
 
     ImGui_ImplOpenGL3_Shutdown();
